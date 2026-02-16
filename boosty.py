@@ -64,7 +64,7 @@ def get_last_post_info(channel):
 
     soup = BeautifulSoup(r.text, "html.parser")
 
-#     with open("page.html", "w", encoding="utf-8") as f:
+#     with open(channel + ".html", "w", encoding="utf-8") as f:
 #         f.write(r.text)
 #
 #     print("HTML сохранён в page.html")
@@ -74,7 +74,7 @@ def get_last_post_info(channel):
     date_tag = soup.select_one(date_selector)
 
     # Заголовок
-    title_selector = 'article div[data-post-id] article .PostSubscriptionBlockBase-scss--module_title_Akfk7'
+    title_selector = 'article div[data-post-id] article.Post-scss--module_content_92UAn h2'
     title_tag = soup.select_one(title_selector)
 
     # --- Парсим дату ---
@@ -120,6 +120,6 @@ if __name__ == "__main__":
         if post_dt > previous_run:
             msg = f"[{channel}] {raw_date}: {title}"
             send_telegram(msg, args.tg_token, args.tg_chat)
-            print("→ Отправлено уведомление в Telegram")
+            print("→ Отправлено уведомление в Telegram", msg)
         else:
             print("→ Новых постов нет")
