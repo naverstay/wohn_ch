@@ -93,24 +93,6 @@ def get_last_post_info(channel):
     return iso_date, raw_date, title
 
 
-# if __name__ == "__main__":
-#     iso_date, raw_date, title = get_last_post_info()
-#
-#     print("ISO‑дата поста:", iso_date)
-#     print("Заголовок:", title)
-#
-#     local_tz = get_tz("Europe/Berlin")
-#     now = datetime.now(local_tz)
-#     previous_run = now - timedelta(hours=interval_hours)
-#
-#     try:
-#         post_dt = datetime.fromisoformat(iso_date)
-#         is_new = post_dt > previous_run
-#         print("Пост новее предыдущего запуска:", is_new)
-#     except Exception as e:
-#         print("Не удалось сравнить дату:", e)
-
-
 # --- Основной код ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -133,11 +115,10 @@ if __name__ == "__main__":
 
         post_dt = datetime.fromisoformat(iso_date)
 
-        print(f"[{channel}] Пост: {title}")
-        print(f"Дата: {iso_date}")
+        print(f"[{channel}] {raw_date}: {title}")
 
         if post_dt > previous_run:
-            msg = f"Новый пост на Boosty!\nКанал: {channel}\nЗаголовок: {title}\nДата: {raw_date}"
+            msg = f"[{channel}] {raw_date}: {title}"
             send_telegram(msg, args.tg_token, args.tg_chat)
             print("→ Отправлено уведомление в Telegram")
         else:
