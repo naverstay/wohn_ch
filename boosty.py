@@ -11,12 +11,6 @@ load_dotenv()
 TG_TOKEN = os.getenv("TG_TOKEN")
 TG_CHAT = os.getenv("TG_CHAT")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--interval", type=int, default=6)
-args = parser.parse_args()
-
-interval_hours = args.interval
-
 CHANNELS = [
     "historipi",
     "prosvet-b",
