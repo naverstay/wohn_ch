@@ -1,0 +1,26 @@
+name: Boosty Crawler
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # каждые 6 часов
+  workflow_dispatch:        # запуск вручную
+
+jobs:
+  run-crawler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run crawler
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: python boosty.py --interval 6
