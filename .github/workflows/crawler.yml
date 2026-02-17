@@ -2,25 +2,17 @@ name: Boosty Crawler
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
+    - cron: "0 */6 * * *"   # каждые 6 часов
+  workflow_dispatch:        # запуск вручную
 
 jobs:
   run-crawler:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Download state
-        uses: actions/download-artifact@v4
-        with:
-          name: crawler-state
-        continue-on-error: true
+      - uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
@@ -30,12 +22,5 @@ jobs:
       - name: Run crawler
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
-        run: python boosty.py
-
-      - name: Upload state
-        uses: actions/upload-artifact@v4
-        with:
-          name: crawler-state
-          path: |
-            subscribers.json
-            last_sent.json
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: python boosty.py --interval 6
