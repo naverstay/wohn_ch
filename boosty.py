@@ -1,270 +1,160 @@
 import os
-import re
 import json
-import requests
-import argparse
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
-import zoneinfo
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
 
-# --- Загрузка .env ---
 load_dotenv()
 
 TG_TOKEN = os.getenv("TG_TOKEN")
-TG_CHAT = os.getenv("TG_CHAT")
-
-# --- Настройки ---
-URL = "https://boosty.to/"
-CHANNELS = [
-    "historipi",
-    "prosvet-b",
-    "ot_adama_do_potsdama",
-]
-
-MONTHS = {
-    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4,
-    "May": 5, "Jun": 6, "Jul": 7, "Aug": 8,
-    "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
-}
-
-STATE_FILE = "last_sent.json"
-
-def human_date(iso_date: str) -> str:
-    dt = datetime.fromisoformat(iso_date)
-    return dt.strftime("%d.%m.%Y %H:%M")
+SUB_FILE = "subscribers.json"
 
 
-# --- Работа с состоянием ---
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {}
+def load_subs():
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
+        with open(SUB_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
-def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+def save_subs(data):
+    with open(SUB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-# --- Telegram ---
-def send_telegram(message: str, token: str, chat_id: str):
-    if not token or not chat_id:
-        print("TG_TOKEN или TG_CHAT не заданы, пропускаю отправку в Telegram")
-        return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {"chat_id": chat_id, "text": message}
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    subs = load_subs()
+
+    if user_id not in subs:
+        subs[user_id] = {}
+        save_subs(subs)
+
+    text = (
+        "Привет! Я бот уведомлений Boosty.\n\n"
+        "Команды:\n"
+        "/subscribe <канал> — подписаться\n"
+        "/unsubscribe <канал> — отписаться\n"
+        "/setinterval <канал> <часы> — изменить интервал\n"
+        "/list — показать твои подписки\n"
+        "/help — помощь"
+    )
+    await update.effective_message.reply_text(text)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start(update, context)
+
+
+async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        return await update.effective_message.reply_text("Используй: /subscribe historipi")
+
+    channel = context.args[0].strip()
+    user_id = str(update.effective_user.id)
+
+    subs = load_subs()
+    subs.setdefault(user_id, {})
+
+    if channel in subs[user_id]:
+        return await update.effective_message.reply_text(f"Ты уже подписан на {channel}")
+
+    subs[user_id][channel] = {"interval": 6}
+    save_subs(subs)
+    await update.effective_message.reply_text(f"Подписал тебя на {channel} (интервал 6 часов)")
+
+
+async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        return await update.effective_message.reply_text("Используй: /unsubscribe historipi")
+
+    channel = context.args[0].strip()
+    user_id = str(update.effective_user.id)
+
+    subs = load_subs()
+    if user_id not in subs or channel not in subs[user_id]:
+        return await update.effective_message.reply_text(f"Ты не подписан на {channel}")
+
+    del subs[user_id][channel]
+    save_subs(subs)
+    await update.effective_message.reply_text(f"Отписал тебя от {channel}")
+
+
+async def setinterval(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        return await update.effective_message.reply_text("Используй: /setinterval historipi 3")
+
+    channel = context.args[0].strip()
     try:
-        r = requests.post(url, data=data, timeout=10)
-        if r.status_code != 200:
-            print("Ошибка отправки в Telegram:", r.text)
-    except Exception as e:
-        print("Исключение при отправке в Telegram:", e)
+        hours = int(context.args[1])
+    except ValueError:
+        return await update.effective_message.reply_text("Интервал должен быть числом")
+
+    if hours < 1:
+        return await update.effective_message.reply_text("Интервал должен быть минимум 1 час")
+
+    user_id = str(update.effective_user.id)
+    subs = load_subs()
+
+    if user_id not in subs or channel not in subs[user_id]:
+        return await update.effective_message.reply_text("Ты не подписан на этот канал")
+
+    subs[user_id][channel]["interval"] = hours
+    save_subs(subs)
+
+    await update.effective_message.reply_text(f"Интервал для {channel} обновлён: {hours} ч.")
 
 
-# --- Timezone ---
-def get_tz(name):
-    try:
-        return zoneinfo.ZoneInfo(name)
-    except Exception:
-        return zoneinfo.ZoneInfo("UTC")
+async def setup_commands(app):
+    await app.bot.set_my_commands([
+        ("start", "Начать работу с ботом"),
+        ("subscribe", "Подписаться на канал Boosty"),
+        ("unsubscribe", "Отписаться от канала"),
+        ("setinterval", "Установить интервал обновления"),
+        ("list", "Показать список подписок"),
+        ("help", "Помощь"),
+    ])
 
 
-# --- Парсинг даты Boosty ---
-def parse_boosty_date(raw: str) -> datetime:
-    # Ожидаемый формат: "Feb 15 00:03"
-    parts = raw.split()
-    if len(parts) < 3:
-        raise ValueError(f"Неожиданный формат даты: {raw}")
+async def list_subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    subs = load_subs()
+    user_channels = subs.get(user_id, {})
 
-    month_str, day_str, time_str = parts[0], parts[1], parts[2]
-    month = MONTHS.get(month_str)
-    if not month:
-        raise ValueError(f"Неизвестный месяц: {month_str}")
+    if not user_channels:
+        return await update.effective_message.reply_text("Ты ни на что не подписан")
 
-    day = int(day_str)
-    hour, minute = map(int, time_str.split(":"))
+    text = "Твои подписки:\n"
+    for ch, cfg in user_channels.items():
+        text += f"- {ch} (интервал: {cfg['interval']} ч.)\n"
 
-    year = datetime.now().year
-
-    # Boosty → считаем, что UTC
-    dt_utc = datetime(year, month, day, hour, minute, tzinfo=zoneinfo.ZoneInfo("UTC"))
-    return dt_utc.astimezone(get_tz("Europe/Berlin"))
+    await update.effective_message.reply_text(text)
 
 
-# --- Парсинг одного канала ---
-def save_page(channel: str, txt: str):
-    with open(channel + ".html", "w", encoding="utf-8") as f:
-        f.write(txt)
+def main():
+    if not TG_TOKEN:
+        raise RuntimeError("TG_TOKEN не задан в .env")
 
-    print("HTML сохранён в " + channel + ".html")
+    app = (
+        ApplicationBuilder()
+        .token(TG_TOKEN)
+        .post_init(setup_commands)   # ← ВАЖНО!
+        .build()
+    )
 
-# --- Парсинг одного канала ---
-def get_last_post_info(channel: str):
-    url = f"{URL}{channel}"
-    r = requests.get(url, timeout=10)
-    r.raise_for_status()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("subscribe", subscribe))
+    app.add_handler(CommandHandler("unsubscribe", unsubscribe))
+    app.add_handler(CommandHandler("setinterval", setinterval))
+    app.add_handler(CommandHandler("list", list_subs))
 
-    save_page(channel, r.text)
+    app.run_polling()
 
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # 1. Находим JSON
-    script_tag = soup.find("script", {"id": "initial-state"})
-    if not script_tag:
-        print(f"[{channel}] initial-state не найден")
-        return None, None, None, None
-
-    try:
-        data = json.loads(script_tag.text)
-    except Exception as e:
-        print(f"[{channel}] Ошибка JSON: {e}")
-        return None, None, None, None
-
-    # 2. Достаём список постов
-    try:
-        posts = data["posts"]["postsList"]["data"]["posts"]
-        if not posts:
-            print(f"[{channel}] Постов нет")
-            return None, None, None, None
-    except KeyError:
-        print(f"[{channel}] postsList не найден")
-        return None, None, None, None
-
-    # 3. Берём самый свежий пост
-    post = posts[0]
-
-    # 4. Достаём данные
-    publish_ts = post.get("publishTime")  # UNIX timestamp
-    title = post.get("title") or "(без заголовка)"
-    post_id = post.get("id")
-    blog_url = post["user"]["blogUrl"]
-
-    # 5. Формируем ссылку
-    link = f"{URL}/{blog_url}/posts/{post_id}"
-
-    # 6. Конвертируем дату
-    dt = datetime.fromtimestamp(publish_ts, tz=zoneinfo.ZoneInfo("UTC"))
-    dt_local = dt.astimezone(zoneinfo.ZoneInfo("Europe/Berlin"))
-    iso_date = dt_local.isoformat()
-
-    return iso_date, title, link
-
-
-def get_last_post_info_2(channel: str):
-    full_channel_url = URL + channel
-    r = requests.get(full_channel_url, timeout=100)
-    r.raise_for_status()
-
-#     save_page(channel, r.text)
-
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # Дата
-    date_selector = 'article div[data-post-id] .BasePostHeader-scss--module_headerLeftBlock_njYUq a'
-    date_tag = soup.select_one(date_selector)
-
-    # Заголовок
-    title_selector = 'article div[data-post-id] article.Post-scss--module_content_92UAn h2'
-    title_tag = soup.select_one(title_selector)
-
-    # Ссылка на пост
-    link_selector = 'article div[data-post-id] article.Post-scss--module_content_92UAn a.Link-scss--module_block_T-ap9'
-    link_tag = soup.select_one(link_selector)
-
-    # Формируем ссылку
-    if link_tag:
-        href = link_tag.get("href", "").strip()
-        if href.startswith("/"):
-            href = "https://boosty.to" + href
-    else:
-        href = full_channel_url
-
-    # Чистим URL от лишних слэшей, не трогая https://
-    href = re.sub(r'(?<!:)//+', '/', href)
-
-    # Парсим дату
-    if date_tag:
-        raw_date = date_tag.text.strip()
-        try:
-            dt_local = parse_boosty_date(raw_date)
-            iso_date = dt_local.isoformat()
-        except Exception as e:
-            print(f"[{channel}] Не удалось распарсить дату '{raw_date}': {e}")
-            iso_date = None
-    else:
-        raw_date = "Дата не найдена"
-        iso_date = None
-
-    title = title_tag.text.strip() if title_tag else "Заголовок не найден"
-
-    return iso_date, raw_date, title, href
-
-
-# --- Основной код ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--interval", type=int, default=6, help="Интервал в часах между проверками")
-    parser.add_argument("--tg_token", type=str, default=TG_TOKEN)
-    parser.add_argument("--tg_chat", type=str, default=TG_CHAT)
-    args = parser.parse_args()
-
-    interval_hours = args.interval
-    local_tz = get_tz("Europe/Berlin")
-    now = datetime.now(local_tz)
-    previous_run = now - timedelta(hours=interval_hours)
-
-    print("Текущее время:", now.isoformat())
-    print("Предыдущий запуск (расчётный):", previous_run.isoformat())
-
-    state = load_state()
-
-    for channel in CHANNELS:
-        print(f"\n=== Канал: {channel} ===")
-        iso_date, title, href = get_last_post_info(channel)
-
-        post_date = human_date(iso_date)
-
-        if not iso_date:
-            print(f"[{channel}] Не удалось получить корректную дату. iso_date='{iso_date}'")
-            continue
-
-        try:
-            post_dt = datetime.fromisoformat(iso_date)
-        except Exception as e:
-            print(f"[{channel}] Не удалось преобразовать iso_date '{iso_date}': {e}")
-            continue
-
-        last_sent_iso = state.get(channel)
-        if last_sent_iso:
-            try:
-                last_sent_dt = datetime.fromisoformat(last_sent_iso)
-            except Exception:
-                last_sent_dt = None
-        else:
-            last_sent_dt = None
-
-        print(f"Пост: {title}")
-        print(f"Дата: {post_date}")
-        print(f"Ссылка: {href}")
-
-        # Уже отправляли этот или более новый пост
-        if last_sent_dt and post_dt <= last_sent_dt:
-            print(f"→ Уже отправлен ранее {post_date}: {title}")
-            continue
-
-        # Проверяем, новее ли пост предыдущего запуска
-        if post_dt > previous_run:
-            msg = f"{channel}\n{post_date}\n{title}\n{href}"
-            send_telegram(msg, args.tg_token, args.tg_chat)
-            print("→ Отправлено уведомление в Telegram", msg)
-
-            # Обновляем состояние
-            state[channel] = iso_date
-            save_state(state)
-        else:
-            print("→ Пост старый, уведомление не отправляем")
+    main()
