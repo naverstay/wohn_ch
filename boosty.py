@@ -160,7 +160,7 @@ def get_last_post_info_2(channel: str):
     r = requests.get(full_channel_url, timeout=100)
     r.raise_for_status()
 
-    save_page(channel, r.text)
+#     save_page(channel, r.text)
 
     soup = BeautifulSoup(r.text, "html.parser")
 
@@ -248,18 +248,18 @@ if __name__ == "__main__":
         else:
             last_sent_dt = None
 
-        print(f"[{channel}] Пост: {post_date}: {title}")
-        print(f"[{channel}] Дата ISO: {post_date}")
-        print(f"[{channel}] Ссылка: {href}")
+        print(f"Пост: {post_date}: {title}")
+        print(f"Дата ISO: {post_date}")
+        print(f"Ссылка: {href}")
 
         # Уже отправляли этот или более новый пост
         if last_sent_dt and post_dt <= last_sent_dt:
-            print(f"→ Уже отправлен ранее [{channel}] {post_date}: {title}")
+            print(f"→ Уже отправлен ранее {post_date}: {title}")
             continue
 
         # Проверяем, новее ли пост предыдущего запуска
         if post_dt > previous_run:
-            msg = f"[{channel}] {post_date}\n{title}\n{href}"
+            msg = f"{channel}\n{post_date}\n{title}\n{href}"
             send_telegram(msg, args.tg_token, args.tg_chat)
             print("→ Отправлено уведомление в Telegram", msg)
 
