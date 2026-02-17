@@ -248,8 +248,8 @@ if __name__ == "__main__":
         else:
             last_sent_dt = None
 
-        print(f"Пост: {post_date}: {title}")
-        print(f"Дата ISO: {post_date}")
+        print(f"Пост: {title}")
+        print(f"Дата: {post_date}")
         print(f"Ссылка: {href}")
 
         # Уже отправляли этот или более новый пост
